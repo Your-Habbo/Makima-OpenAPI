@@ -5,13 +5,18 @@ namespace App\Http\Controllers\Api\Auth;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\TwoFactorRequest;
 use App\Http\Resources\UserResource;
+use App\Models\User;
 use App\Services\TwoFactorService;
+use Endroid\QrCode\Builder\Builder;
+use Endroid\QrCode\Encoding\Encoding;
+use Endroid\QrCode\Writer\PngWriter;
+use Endroid\QrCode\ErrorCorrectionLevel;
+use Endroid\QrCode\RoundBlockSizeMode;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 use PragmaRX\Google2FA\Google2FA;
-use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class TwoFactorController extends Controller
 {
@@ -22,21 +27,15 @@ class TwoFactorController extends Controller
 
     /**
      * @group Two-Factor Authentication
-     * 
+     *
      * Enable 2FA
-     * 
+     *
      * Generate QR code and secret for 2FA setup
-     * 
-     * @response 200 {
-     *   "qr_code": "data:image/svg+xml;base64,PHN2Zy4uLg==",
-     *   "secret": "JBSWY3DPEHPK3PXP",
-     *   "backup_codes": ["12345678", "87654321"]
-     * }
      */
     public function enable(Request $request): JsonResponse
     {
         $user = $request->user();
-        
+
         if ($user->two_factor_enabled) {
             return response()->json([
                 'message' => 'Two-factor authentication is already enabled.',
@@ -45,7 +44,7 @@ class TwoFactorController extends Controller
 
         // Generate secret
         $user->generateTwoFactorSecret();
-        
+
         // Generate backup codes
         $backupCodes = $this->twoFactorService->generateBackupCodes();
         $user->forceFill([
@@ -59,8 +58,11 @@ class TwoFactorController extends Controller
             $secret
         );
 
+        // ✅ Simple solution using Google Charts
+        $qrCodeImage = 'https://chart.googleapis.com/chart?chs=200x200&chld=M|0&cht=qr&chl=' . urlencode($qrCodeUrl);
+
         return response()->json([
-            'qr_code' => QrCode::format('svg')->size(200)->generate($qrCodeUrl),
+            'qr_code' => $qrCodeImage,
             'secret' => $secret,
             'backup_codes' => $backupCodes,
         ]);
@@ -68,12 +70,8 @@ class TwoFactorController extends Controller
 
     /**
      * @group Two-Factor Authentication
-     * 
+     *
      * Confirm 2FA
-     * 
-     * Verify OTP code and enable 2FA
-     * 
-     * @bodyParam code string required The OTP code from authenticator app. Example: 123456
      */
     public function confirm(TwoFactorRequest $request): JsonResponse
     {
@@ -107,14 +105,8 @@ class TwoFactorController extends Controller
 
     /**
      * @group Two-Factor Authentication
-     * 
+     *
      * Verify 2FA Login
-     * 
-     * Complete login with 2FA code
-     * 
-     * @bodyParam code string required The OTP code. Example: 123456
-     * @bodyParam recovery_code string optional Recovery code if OTP not available. Example: 12345678
-     * @bodyParam device_name string required Device name for token. Example: iPhone 12
      */
     public function verify(Request $request): JsonResponse
     {
@@ -171,10 +163,8 @@ class TwoFactorController extends Controller
 
     /**
      * @group Two-Factor Authentication
-     * 
+     *
      * Disable 2FA
-     * 
-     * @bodyParam password string required Current password for verification. Example: password123
      */
     public function disable(Request $request): JsonResponse
     {
@@ -198,7 +188,7 @@ class TwoFactorController extends Controller
 
     /**
      * @group Two-Factor Authentication
-     * 
+     *
      * Get Recovery Codes
      */
     public function recoveryCodes(Request $request): JsonResponse
@@ -218,7 +208,7 @@ class TwoFactorController extends Controller
 
     /**
      * @group Two-Factor Authentication
-     * 
+     *
      * Regenerate Recovery Codes
      */
     public function regenerateRecoveryCodes(Request $request): JsonResponse
@@ -243,7 +233,7 @@ class TwoFactorController extends Controller
 
     /**
      * @group Two-Factor Authentication
-     * 
+     *
      * Send Email 2FA Code
      */
     public function sendEmailCode(Request $request): JsonResponse
@@ -259,10 +249,8 @@ class TwoFactorController extends Controller
 
     /**
      * @group Two-Factor Authentication
-     * 
+     *
      * Verify Email 2FA Code
-     * 
-     * @bodyParam code string required The email OTP code. Example: 123456
      */
     public function verifyEmailCode(Request $request): JsonResponse
     {

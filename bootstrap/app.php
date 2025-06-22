@@ -28,6 +28,16 @@ return Application::configure(basePath: dirname(__DIR__))
             'stripe/*',
             'api/*',
         ]);
+
+        // Add Laravel's built-in CORS middleware
+        $middleware->api(append: [
+            \Illuminate\Http\Middleware\HandleCors::class,
+        ]);
+
+        // Also add CORS to web routes for Sanctum CSRF cookie
+        $middleware->web(append: [
+            \Illuminate\Http\Middleware\HandleCors::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
