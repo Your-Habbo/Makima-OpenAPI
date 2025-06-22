@@ -1,0 +1,79 @@
+<?php
+
+return [
+    'type' => 'laravel',
+    'theme' => 'default',
+    'title' => 'Authentication API Documentation',
+    'description' => 'API documentation for authentication system with 2FA and RBAC',
+    'base_url' => env('APP_URL', 'http://localhost:8000'),
+    'routes' => [
+        [
+            'match' => [
+                'domains' => ['*'],
+                'prefixes' => ['api/*'],
+                'versions' => ['v1'],
+            ],
+            'include' => [],
+            'exclude' => [
+                'telescope*',
+                'horizon*',
+                'sanctum/csrf-cookie',
+            ],
+        ],
+    ],
+    'type' => 'static',
+    'static' => [
+        'output_path' => 'public/docs',
+    ],
+    'laravel' => [
+        'add_routes' => true,
+        'docs_url' => '/docs',
+    ],
+    'try_it_out' => [
+        'enabled' => true,
+        'base_url' => env('APP_URL', 'http://localhost:8000'),
+    ],
+    'auth' => [
+        'enabled' => true,
+        'default' => false,
+        'in' => 'bearer',
+        'name' => 'Authorization',
+    ],
+    'strategies' => [
+        'metadata' => [
+            \Knuckles\Scribe\Extracting\Strategies\Metadata\GetFromDocBlocks::class,
+        ],
+        'urlParameters' => [
+            \Knuckles\Scribe\Extracting\Strategies\UrlParameters\GetFromLaravelAPI::class,
+            \Knuckles\Scribe\Extracting\Strategies\UrlParameters\GetFromUrlParamTag::class,
+        ],
+        'queryParameters' => [
+            \Knuckles\Scribe\Extracting\Strategies\QueryParameters\GetFromFormRequest::class,
+            \Knuckles\Scribe\Extracting\Strategies\QueryParameters\GetFromInlineValidator::class,
+            \Knuckles\Scribe\Extracting\Strategies\QueryParameters\GetFromQueryParamTag::class,
+        ],
+        'headers' => [
+            \Knuckles\Scribe\Extracting\Strategies\Headers\GetFromRouteRules::class,
+            \Knuckles\Scribe\Extracting\Strategies\Headers\GetFromHeaderTag::class,
+        ],
+        'bodyParameters' => [
+            \Knuckles\Scribe\Extracting\Strategies\BodyParameters\GetFromFormRequest::class,
+            \Knuckles\Scribe\Extracting\Strategies\BodyParameters\GetFromInlineValidator::class,
+            \Knuckles\Scribe\Extracting\Strategies\BodyParameters\GetFromBodyParamTag::class,
+        ],
+        'responses' => [
+            \Knuckles\Scribe\Extracting\Strategies\Responses\UseResponseTag::class,
+            \Knuckles\Scribe\Extracting\Strategies\Responses\UseApiResourceTags::class,
+            \Knuckles\Scribe\Extracting\Strategies\Responses\UseTransformerTags::class,
+            \Knuckles\Scribe\Extracting\Strategies\Responses\ResponseCalls::class,
+        ],
+        'responseFields' => [
+            \Knuckles\Scribe\Extracting\Strategies\ResponseFields\GetFromResponseFieldTag::class,
+        ],
+    ],
+    'fractal' => [
+        'serializer' => null,
+    ],
+    'faker_seed' => null,
+    'database_connections_to_transact' => [config('database.default')],
+];
