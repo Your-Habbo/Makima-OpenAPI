@@ -1,37 +1,39 @@
 <?php
+// config/cors.php - Updated for cross-origin setup
 
 return [
-    /*
-    |--------------------------------------------------------------------------
-    | Cross-Origin Resource Sharing (CORS) Configuration
-    |--------------------------------------------------------------------------
-    |
-    | Here you may configure your settings for cross-origin resource sharing
-    | or "CORS". This determines what cross-origin operations may execute
-    | in web browsers. You are free to adjust these settings as needed.
-    |
-    | To learn more: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
-    |
-    */
-
     'paths' => [
         'api/*',
         'sanctum/csrf-cookie',
+        'auth/*',
     ],
 
     'allowed_methods' => ['*'],
 
+    // Critical: Allow requests from localhost where the frontend runs
     'allowed_origins' => [
         'http://localhost:3000',
         'http://127.0.0.1:3000',
-        'http://10.10.114.22:3000',
+        // Add any other domains you might use
     ],
 
     'allowed_origins_patterns' => [],
 
-    'allowed_headers' => ['*'],
+    'allowed_headers' => [
+        'Accept',
+        'Authorization',
+        'Content-Type',
+        'X-Requested-With',
+        'X-CSRF-TOKEN',
+        'X-XSRF-TOKEN',
+        'Origin',
+        'User-Agent',
+    ],
 
-    'exposed_headers' => [],
+    'exposed_headers' => [
+        'X-CSRF-TOKEN',
+        'Set-Cookie',
+    ],
 
     'max_age' => 0,
 

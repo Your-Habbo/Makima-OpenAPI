@@ -1,4 +1,5 @@
 <?php
+// app/Http/Controllers/Api/Auth/TwoFactorController.php
 
 namespace App\Http\Controllers\Api\Auth;
 
@@ -7,14 +8,10 @@ use App\Http\Requests\TwoFactorRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Services\TwoFactorService;
-use Endroid\QrCode\Builder\Builder;
-use Endroid\QrCode\Encoding\Encoding;
-use Endroid\QrCode\Writer\PngWriter;
-use Endroid\QrCode\ErrorCorrectionLevel;
-use Endroid\QrCode\RoundBlockSizeMode;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use PragmaRX\Google2FA\Google2FA;
 
@@ -23,7 +20,8 @@ class TwoFactorController extends Controller
     public function __construct(
         private TwoFactorService $twoFactorService,
         private Google2FA $google2fa
-    ) {}
+    ) {
+    }
 
     /**
      * @group Two-Factor Authentication
@@ -58,7 +56,6 @@ class TwoFactorController extends Controller
             $secret
         );
 
-        // ✅ Simple solution using Google Charts
         $qrCodeImage = 'https://chart.googleapis.com/chart?chs=200x200&chld=M|0&cht=qr&chl=' . urlencode($qrCodeUrl);
 
         return response()->json([
@@ -108,25 +105,57 @@ class TwoFactorController extends Controller
      *
      * Verify 2FA Login
      */
-    public function verify(Request $request): JsonResponse
+    public function verify(TwoFactorRequest $request): JsonResponse
     {
-        $request->validate([
-            'code' => 'required_without:recovery_code|string|size:6',
-            'recovery_code' => 'required_without:code|string',
-            'device_name' => 'required|string',
-        ]);
+        // Start the session explicitly to ensure it's available
+        if (!session()->isStarted()) {
+            session()->start();
+        }
 
+        // --- DEBUGGING ---
+        Log::debug('2FA Verify: Request received. Session ID: ' . session()->getId());
+        Log::debug('2FA Verify: Session data:', session()->all());
+        Log::debug('2FA Verify: Request headers:', $request->headers->all());
+        Log::debug('2FA Verify: Request cookies:', $request->cookies->all());
+        // --- END DEBUGGING ---
+
+        // Try multiple methods to get the user ID
         $userId = session('2fa_user_id');
+
+        // Fallback: try to get from cache using session ID as key
         if (!$userId) {
+            $sessionId = session()->getId();
+            $userId = Cache::get("2fa_user_id_{$sessionId}");
+            Log::debug('2FA Verify: Fallback cache lookup for session ' . $sessionId . ', found user ID: ' . ($userId ?: 'none'));
+        }
+
+        // Fallback: try to get from cache using IP + User-Agent as key
+        if (!$userId) {
+            $cacheKey = '2fa_user_id_' . md5($request->ip() . $request->userAgent());
+            $userId = Cache::get($cacheKey);
+            Log::debug('2FA Verify: Fallback IP+UA cache lookup, found user ID: ' . ($userId ?: 'none'));
+        }
+
+        if (!$userId) {
+            // --- DEBUGGING ---
+            Log::error('2FA Verify: No user ID found in session or cache. Session expired or invalid.');
+            Log::error('2FA Verify: Session ID: ' . session()->getId());
+            Log::error('2FA Verify: All session data: ', session()->all());
+            // --- END DEBUGGING ---
+
             throw ValidationException::withMessages([
-                'code' => ['Two-factor authentication session expired.'],
+                'code' => ['Two-factor authentication session expired. Please login again.'],
             ]);
         }
+
+        // --- DEBUGGING ---
+        Log::info('2FA Verify: Found user ID: ' . $userId);
+        // --- END DEBUGGING ---
 
         $user = User::find($userId);
         if (!$user || !$user->two_factor_enabled) {
             throw ValidationException::withMessages([
-                'code' => ['Two-factor authentication is not enabled.'],
+                'code' => ['Two-factor authentication is not enabled for this user.'],
             ]);
         }
 
@@ -150,10 +179,22 @@ class TwoFactorController extends Controller
             ]);
         }
 
-        // Clear 2FA session
+        // Clean up all stored references
         session()->forget('2fa_user_id');
+        $sessionId = session()->getId();
+        Cache::forget("2fa_user_id_{$sessionId}");
+        $cacheKey = '2fa_user_id_' . md5($request->ip() . $request->userAgent());
+        Cache::forget($cacheKey);
 
-        $token = $user->createToken($request->device_name)->plainTextToken;
+        // Update last login info
+        $user->update([
+            'last_login_at' => now(),
+            'last_login_ip' => $request->ip(),
+        ]);
+
+        $token = $user->createToken($request->input('device_name', 'Browser'))->plainTextToken;
+
+        Log::info('2FA Verify: Successfully verified 2FA for user ID: ' . $user->id);
 
         return response()->json([
             'user' => new UserResource($user->load('profile', 'roles')),
@@ -240,7 +281,7 @@ class TwoFactorController extends Controller
     {
         $user = $request->user();
 
-        $code = $this->twoFactorService->sendEmailCode($user);
+        $this->twoFactorService->sendEmailCode($user);
 
         return response()->json([
             'message' => 'Two-factor authentication code sent to your email.',
